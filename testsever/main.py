@@ -177,6 +177,134 @@ async def chat(messages: List[Dict[str, str]]) -> Dict[str, Any]:
     except Exception as e:
         return {"error": f"调用LLM出错: {str(e)}"}
 
+# 添加文本摘要工具
+@mcp.tool()
+async def summarize_text(text: str, max_length: int = 100) -> Dict[str, Any]:
+    """将文本摘要为指定长度
+    
+    Args:
+        text: 要摘要的文本
+        max_length: 摘要的最大长度（字符数）
+    """
+    try:
+        # 调用千问模型进行摘要
+        async with httpx.AsyncClient() as client:
+            payload = {
+                "model": config.model,
+                "messages": [
+                    {"role": "system", "content": f"请将以下文本摘要为不超过{max_length}个字符的简短摘要:"},
+                    {"role": "user", "content": text}
+                ],
+                "max_tokens": 500,
+                "temperature": 0.3,
+            }
+            
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {config.api_key}"
+            }
+            
+            response = await client.post(
+                f"{config.api_base}/chat/completions",
+                json=payload,
+                headers=headers
+            )
+            
+            if response.status_code == 200:
+                response_json = response.json()
+                if "choices" in response_json and len(response_json["choices"]) > 0:
+                    summary = response_json["choices"][0]["message"]["content"]
+                    return {"summary": summary}
+            
+            return {"error": "摘要生成失败", "details": response.text}
+    except Exception as e:
+        return {"error": f"摘要工具错误: {str(e)}"}
+
+# 添加文本翻译工具
+@mcp.tool()
+async def translate_text(text: str, target_language: str = "英语") -> Dict[str, Any]:
+    """将文本翻译为目标语言
+    
+    Args:
+        text: 要翻译的文本
+        target_language: 目标语言，如"英语"、"法语"、"日语"等
+    """
+    try:
+        # 调用千问模型进行翻译
+        async with httpx.AsyncClient() as client:
+            payload = {
+                "model": config.model,
+                "messages": [
+                    {"role": "system", "content": f"请将以下文本翻译为{target_language}:"},
+                    {"role": "user", "content": text}
+                ],
+                "max_tokens": 1000,
+                "temperature": 0.3,
+            }
+            
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {config.api_key}"
+            }
+            
+            response = await client.post(
+                f"{config.api_base}/chat/completions",
+                json=payload,
+                headers=headers
+            )
+            
+            if response.status_code == 200:
+                response_json = response.json()
+                if "choices" in response_json and len(response_json["choices"]) > 0:
+                    translation = response_json["choices"][0]["message"]["content"]
+                    return {"translation": translation}
+            
+            return {"error": "翻译失败", "details": response.text}
+    except Exception as e:
+        return {"error": f"翻译工具错误: {str(e)}"}
+
+# 添加文本分析工具
+@mcp.tool()
+async def analyze_sentiment(text: str) -> Dict[str, Any]:
+    """分析文本的情感倾向
+    
+    Args:
+        text: 要分析的文本
+    """
+    try:
+        # 调用千问模型进行情感分析
+        async with httpx.AsyncClient() as client:
+            payload = {
+                "model": config.model,
+                "messages": [
+                    {"role": "system", "content": "请分析以下文本的情感倾向，并给出积极、消极或中性的评价，以及0-10的情感分数和简短理由:"},
+                    {"role": "user", "content": text}
+                ],
+                "max_tokens": 500,
+                "temperature": 0.3,
+            }
+            
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {config.api_key}"
+            }
+            
+            response = await client.post(
+                f"{config.api_base}/chat/completions",
+                json=payload,
+                headers=headers
+            )
+            
+            if response.status_code == 200:
+                response_json = response.json()
+                if "choices" in response_json and len(response_json["choices"]) > 0:
+                    analysis = response_json["choices"][0]["message"]["content"]
+                    return {"analysis": analysis}
+            
+            return {"error": "情感分析失败", "details": response.text}
+    except Exception as e:
+        return {"error": f"情感分析工具错误: {str(e)}"}
+
 # 主入口
 if __name__ == "__main__":
     # 初始化并运行 server

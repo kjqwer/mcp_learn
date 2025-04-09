@@ -99,7 +99,7 @@ class MCPClient:
                 raise Exception(f"API请求失败: {response.status_code}, {response.text}")
 
     async def process_query(self, query: str) -> str:
-        """使用千问和可用的工具处理查询"""
+        """使用千问和可用的工具处理查询，支持链式工具调用"""
         messages = [
             {
                 "role": "user",
@@ -119,61 +119,79 @@ class MCPClient:
 
         # 初始千问 API 调用
         response = await self.call_qwen_api(messages, available_tools)
-
-        # 处理响应并处理工具调用
         final_text = []
-
-        if "choices" in response and len(response["choices"]) > 0:
+        
+        # 最大链式调用次数，防止无限循环
+        max_chain_calls = 5
+        chain_count = 0
+        
+        # 循环处理工具调用，直到模型不再调用工具或达到最大调用次数
+        while chain_count < max_chain_calls:
+            chain_count += 1
+            
+            if "choices" not in response or len(response["choices"]) == 0:
+                break
+            
             assistant_message = response["choices"][0]["message"]
             
-            # 检查是否有工具调用
-            if "tool_calls" in assistant_message and assistant_message["tool_calls"]:
-                for tool_call in assistant_message["tool_calls"]:
-                    if tool_call["type"] == "function":
-                        function_call = tool_call["function"]
-                        tool_name = function_call["name"]
-                        tool_args = json.loads(function_call["arguments"])
-                        
-                        # 执行工具调用
-                        result = await self.session.call_tool(tool_name, tool_args)
-                        final_text.append(f"[调用工具 {tool_name}，参数 {tool_args}]")
-                        
-                        # 添加助手消息和工具结果到消息历史
-                        # 确保内容是字符串
-                        assistant_content = assistant_message.get("content", "")
-                        if not isinstance(assistant_content, str):
-                            assistant_content = str(assistant_content)
-                        
-                        messages.append({
-                            "role": "assistant",
-                            "content": assistant_content,
-                            "tool_calls": assistant_message["tool_calls"]
-                        })
-                        
-                        # 确保工具结果是可序列化的
-                        try:
-                            tool_result_content = json.dumps(result.content)
-                        except TypeError:
-                            # 如果无法序列化，转换为字符串
-                            tool_result_content = str(result.content)
-                        
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call["id"],
-                            "name": tool_name,
-                            "content": tool_result_content
-                        })
-                        
-                        # 获取千问的下一个响应
-                        response = await self.call_qwen_api(messages, available_tools)
-                        if "choices" in response and len(response["choices"]) > 0:
-                            final_text.append(response["choices"][0]["message"]["content"])
-            else:
-                # 如果没有工具调用，直接返回内容
+            # 如果没有工具调用，结束循环
+            if "tool_calls" not in assistant_message or not assistant_message["tool_calls"]:
                 content = assistant_message.get("content", "")
                 if not isinstance(content, str):
                     content = str(content)
                 final_text.append(content)
+                break
+            
+            # 处理所有工具调用
+            has_tool_calls = False
+            for tool_call in assistant_message["tool_calls"]:
+                if tool_call["type"] == "function":
+                    has_tool_calls = True
+                    function_call = tool_call["function"]
+                    tool_name = function_call["name"]
+                    tool_args = json.loads(function_call["arguments"])
+                    
+                    # 执行工具调用
+                    result = await self.session.call_tool(tool_name, tool_args)
+                    final_text.append(f"[调用工具 {tool_name}，参数 {tool_args}]")
+                    
+                    # 确保内容是字符串
+                    assistant_content = assistant_message.get("content", "")
+                    if not isinstance(assistant_content, str):
+                        assistant_content = str(assistant_content)
+                    
+                    # 添加助手消息到历史
+                    messages.append({
+                        "role": "assistant",
+                        "content": assistant_content,
+                        "tool_calls": assistant_message["tool_calls"]
+                    })
+                    
+                    # 确保工具结果是可序列化的
+                    try:
+                        tool_result_content = json.dumps(result.content)
+                    except TypeError:
+                        tool_result_content = str(result.content)
+                    
+                    # 添加工具结果到历史
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call["id"],
+                        "name": tool_name,
+                        "content": tool_result_content
+                    })
+            
+            # 如果没有工具调用，结束循环
+            if not has_tool_calls:
+                break
+            
+            # 获取下一个响应
+            response = await self.call_qwen_api(messages, available_tools)
+        
+        # 添加最终响应
+        if chain_count >= max_chain_calls and "choices" in response and len(response["choices"]) > 0:
+            final_text.append("(达到最大链式调用次数限制)")
+            final_text.append(response["choices"][0]["message"].get("content", ""))
         
         return "\n".join(final_text)
 
