@@ -1,0 +1,36 @@
+# FastAgent 配置文件
+
+# 默认模型配置
+default_model: haiku  # Claude Haiku
+
+# 日志配置
+logger:
+  level: "info"
+  type: "console"
+  progress_display: true
+  show_chat: true
+  show_tools: true
+  truncate_tools: true
+
+# MCP 服务器配置
+mcp:
+  servers:
+    # 自定义MCP服务器
+    custom_mcp:
+      type: "http"
+      base_url: "http://localhost:8001"
+      headers:
+        Content-Type: "application/json"
+    
+    # Fetch服务器
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+
+# OpenAI配置
+openai:
+  default_model: "gpt-4o-mini"
+  
+# Anthropic配置
+anthropic:
+  default_model: "claude-3-haiku-20240307" 

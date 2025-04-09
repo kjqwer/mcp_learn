@@ -1,0 +1,31 @@
+# MCP Agent Configuration File
+
+# Default Model Configuration
+default_model: haiku  # Claude Haiku
+
+# Logging Configuration
+logger:
+  level: "info"
+  type: "console"
+  progress_display: true
+  show_chat: true
+  show_tools: true
+  truncate_tools: true
+
+# MCP Servers Configuration
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+# OpenAI Configuration
+openai:
+  default_model: "gpt-4o-mini"
+  
+# Anthropic Configuration
+anthropic:
+  default_model: "claude-3-haiku-20240307"
