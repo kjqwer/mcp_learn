@@ -3,13 +3,15 @@ from typing import Optional, Dict, Any, List
 from contextlib import AsyncExitStack
 import json
 import httpx
+import argparse
+import sys
+import os
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from mcp.client.sse import sse_client
 
 from dotenv import load_dotenv
-import os
-import sys
 
 # 导入模型配置
 from model_config import ModelConfig
@@ -28,7 +30,7 @@ class MCPClient:
         self.model_config = ModelConfig(config_file)
         
     async def connect_to_server(self, server_script_path: str):
-        """连接到 MCP 服务器
+        """连接到 MCP 服务器 (stdio 模式)
 
         Args:
             server_script_path: 服务器脚本的路径 (.py 或 .js)
@@ -55,6 +57,29 @@ class MCPClient:
         response = await self.session.list_tools()
         tools = response.tools
         print("\n已连接到服务器，工具包括：", [tool.name for tool in tools])
+    
+    async def connect_to_sse_server(self, server_url: str):
+        """连接到 MCP 服务器 (SSE 模式)
+
+        Args:
+            server_url: 服务器 URL，如 http://localhost:8000/sse
+        """
+        # 使用官方 SSE 客户端连接
+        # sse_client 会建立 SSE 连接并返回通信流
+        streams = await self.exit_stack.enter_async_context(sse_client(server_url))
+        
+        # 使用流创建 ClientSession
+        # streams[0] 是从服务器接收消息的流
+        # streams[1] 是向服务器发送消息的流
+        self.session = await self.exit_stack.enter_async_context(ClientSession(streams[0], streams[1]))
+        
+        # 发送初始化请求给服务器
+        await self.session.initialize()
+        
+        # 列出可用的工具
+        response = await self.session.list_tools()
+        tools = response.tools
+        print("\n已连接到 SSE 服务器，工具包括：", [tool.name for tool in tools])
 
     async def call_qwen_api(self, messages: List[Dict[str, Any]], tools=None) -> Dict[str, Any]:
         """调用阿里云千问 API
@@ -219,13 +244,27 @@ class MCPClient:
         await self.exit_stack.aclose()
 
 async def main():
-    if len(sys.argv) < 2:
-        print("使用方法: python mcp_client.py <path_to_server_script>")
+    parser = argparse.ArgumentParser(description="MCP 客户端")
+    parser.add_argument("server", nargs="?", help="服务器脚本路径或 SSE 服务器 URL")
+    parser.add_argument("--mode", choices=["stdio", "sse"], default="stdio",
+                      help="连接模式: stdio 或 sse")
+    
+    args = parser.parse_args()
+    
+    if not args.server:
+        print("使用方法: python mcp_client.py <path_to_server_script> 或 python mcp_client.py --mode=sse <server_url>")
         sys.exit(1)
-
+    
     client = MCPClient()
     try:
-        await client.connect_to_server(sys.argv[1])
+        if args.mode == "stdio":
+            # 标准输入输出模式 - 启动并连接到子进程服务器
+            await client.connect_to_server(args.server)
+        else:
+            # SSE 模式 - 连接到运行中的 HTTP 服务器
+            # args.server 应为 URL，如 http://localhost:8000/sse
+            await client.connect_to_sse_server(args.server)
+        
         await client.chat_loop()
     except Exception as e:
         print(f"程序运行出错: {str(e)}")

@@ -4,17 +4,23 @@ import re
 import os
 import json
 import sys
+import asyncio
+import uvicorn
+import click
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from mcp.server.fastmcp import FastMCP
+from mcp.server.sse import SseServerTransport
+from starlette.applications import Starlette
+from starlette.routing import Mount, Route
 from config import Config  # 导入新的配置类
-
-# 初始化 FastMCP server
-mcp = FastMCP("combined-tools")
 
 # 获取当前脚本所在目录
 current_dir = os.path.dirname(os.path.abspath(__file__))
 config_path = os.path.join(os.path.dirname(current_dir), "config.json")
 config = Config(config_path if os.path.exists(config_path) else None)
+
+# 初始化 FastMCP server
+mcp = FastMCP("combined-tools")
 
 # 计算器工具
 @mcp.tool()
@@ -263,7 +269,50 @@ async def analyze_sentiment(text: str) -> Dict[str, Any]:
     except Exception as e:
         return {"error": f"情感分析工具错误: {str(e)}"}
 
+# 创建 SSE 服务器传输
+sse = SseServerTransport("/messages/")
+
+# 处理 SSE 请求的函数
+async def handle_sse(request):
+    async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
+        await mcp._mcp_server.run(
+            streams[0],
+            streams[1],
+            mcp._mcp_server.create_initialization_options(),
+        )
+
+# 创建 Starlette 应用
+starlette_app = Starlette(
+    debug=True,
+    routes=[
+        Route("/sse", endpoint=handle_sse),
+        Mount("/messages/", app=sse.handle_post_message),
+    ],
+)
+
 # 主入口
 if __name__ == "__main__":
-    # 初始化并运行 server
-    mcp.run(transport='stdio') 
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="MCP 服务器")
+    parser.add_argument("--mode", choices=["stdio", "http"], default="stdio",
+                      help="启动模式: stdio 或 http (SSE)")
+    parser.add_argument("--host", default="127.0.0.1", help="HTTP 服务器主机")
+    parser.add_argument("--port", type=int, default=8000, help="HTTP 服务器端口")
+    
+    args = parser.parse_args()
+    
+    if args.mode == "stdio":
+        # 原始的 stdio 模式
+        mcp.run(transport='stdio')
+    else:
+        # 设置FastMCP的SSE配置
+        mcp.settings.host = args.host
+        mcp.settings.port = args.port
+        mcp.settings.sse_path = "/sse"
+        mcp.settings.message_path = "/messages/"
+        
+        # HTTP/SSE 模式，使用FastMCP内置的sse_app方法
+        print(f"启动 HTTP 服务器，支持 SSE，地址: http://{args.host}:{args.port}/sse")
+        # 使用内置运行方法
+        mcp.run(transport='sse') 
