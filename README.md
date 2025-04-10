@@ -12,7 +12,7 @@
 
 ## 功能特性
 
-- 支持多种工具调用（计算器、天气查询、网页获取等）
+- 支持多种工具调用（计算器、天气查询、网页获取等（功能是模拟的））
 - 支持链式工具调用
 - 配置管理（支持环境变量和配置文件）
 
@@ -51,5 +51,3 @@ python mcp_client.py testsever/main.py
 
 - [MCP 官方文档](https://mcpcn.com/docs/introduction/)
 - [阿里云千问 API 文档](https://help.aliyun.com/document_detail/2400395.html)
-```
-
