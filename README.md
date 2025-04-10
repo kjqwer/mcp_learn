@@ -35,6 +35,15 @@ cp config.json.example config.json
 
 ```bash
 python mcp_client.py testsever/main.py
+//或者启动某些支持mcp的库比如mcp_server_fetch
+python mcp_client.py -m mcp_server_fetch
+//或者npx启动(如果装了npx)，这种方法会自动识别目录下的.venv
+cd <环境目录>
+npx @modelcontextprotocol/inspector python main.py
+//本质上是
+npx @modelcontextprotocol/inspector -- "<python解释器路径>" "<服务器脚本路径>"
+//举例
+npx @modelcontextprotocol/inspector -- "E:/1awd/zm/pro3/mcp/testsever/.venv/Scripts/python.exe" "E:/1awd/zm/pro3/mcp/testsever/main.py"
 ```
 
 这种模式下，客户端会自动启动服务器进程并通过标准输入输出进行通信。
@@ -59,6 +68,7 @@ python mcp_client.py --mode sse http://127.0.0.1:8000/sse
 
 ![运行效果](pic/运行效果.png)
 ![第三方sse示例](pic/sse示例.png)
+![npx示例](pic/npx示例.png)
 
 ## 环境变量
 
