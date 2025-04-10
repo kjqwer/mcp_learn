@@ -143,17 +143,27 @@ class MCPClient:
             "Authorization": f"Bearer {client_params['api_key']}"
         }
         
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{client_params['base_url']}/chat/completions",
-                json=payload,
-                headers=headers
-            )
-            
-            if response.status_code == 200:
-                return response.json()
-            else:
-                raise Exception(f"API请求失败: {response.status_code}, {response.text}")
+        # 设置超时时间，默认为60秒
+        timeout = httpx.Timeout(60.0, connect=30.0)
+        
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(
+                    f"{client_params['base_url']}/chat/completions",
+                    json=payload,
+                    headers=headers
+                )
+                
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    raise Exception(f"API请求失败: {response.status_code}, {response.text}")
+        except httpx.ReadTimeout:
+            raise Exception("连接千问API超时，请检查网络连接或稍后重试")
+        except httpx.ConnectTimeout:
+            raise Exception("连接千问API失败，请检查网络连接")
+        except Exception as e:
+            raise Exception(f"API请求异常: {str(e)}")
 
     async def process_query(self, query: str) -> str:
         """使用千问和可用的工具处理查询，支持链式工具调用"""
@@ -176,7 +186,7 @@ class MCPClient:
             } for tool in response.tools]
 
             # 处理直接工具调用的格式：工具名+空格+参数
-            if " " in query and not query.startswith("fetch "):
+            if " " in query:
                 parts = query.split(" ", 1)
                 tool_name = parts[0]
                 tool_args_str = parts[1]
@@ -204,74 +214,12 @@ class MCPClient:
                     except Exception as e:
                         return f"工具调用错误: {str(e)}\n\n参数格式应为JSON或简单URL"
             
-            # 处理fetch工具的特殊格式：fetch+网址
-            if query.startswith("fetch "):
-                url = query[6:].strip()  # 提取URL
-                try:
-                    print(f"正在获取网页内容: {url}")
-                    
-                    # 添加额外参数以处理超时问题
-                    fetch_args = {
-                        "url": url,
-                        "max_length": 10000  # 增加最大长度
-                    }
-                    
-                    # 设置超时参数
-                    timeout_seconds = 30  # 可以设置更长时间
-                    timeout_task = asyncio.create_task(asyncio.sleep(timeout_seconds))
-                    fetch_task = asyncio.create_task(self.session.call_tool("fetch", fetch_args))
-                    
-                    # 使用 asyncio.wait 等待任务完成或超时
-                    done, pending = await asyncio.wait(
-                        [fetch_task, timeout_task],
-                        return_when=asyncio.FIRST_COMPLETED
-                    )
-                    
-                    # 如果是超时任务先完成，则取消 fetch 任务
-                    if timeout_task in done:
-                        fetch_task.cancel()
-                        return f"获取网页内容超时（{timeout_seconds}秒）。可能网站响应较慢或无法访问。\n请尝试其他网址或稍后重试。"
-                    
-                    # 取消超时任务
-                    timeout_task.cancel()
-                    
-                    # 获取结果
-                    result = await fetch_task
-                    
-                    if not result.content:
-                        return "获取的网页内容为空。可能网址无效或网站返回了空内容。"
-                    
-                    # 分析内容长度
-                    content_length = len(str(result.content))
-                    truncation_message = ""
-                    if content_length >= 9000:  # 接近最大长度时
-                        truncation_message = f"\n[内容已截断，共获取 {content_length} 字符。要获取更多内容，可使用 start_index 参数]\n"
-                    
-                    return f"[调用fetch工具获取网页内容]\n{truncation_message}{result.content}"
-                    
-                except asyncio.CancelledError:
-                    return "获取网页内容的操作被取消。"
-                except Exception as e:
-                    error_type = type(e).__name__
-                    error_msg = str(e)
-                    
-                    # 提供针对不同错误类型的友好提示
-                    friendly_msg = "未知错误，请检查网址格式和网络连接。"
-                    
-                    if "Timeout" in error_type or "timeout" in error_msg.lower():
-                        friendly_msg = "连接超时，可能网站响应较慢或无法访问。"
-                    elif "ConnectionError" in error_type:
-                        friendly_msg = "连接错误，无法建立与服务器的连接。"
-                    elif "SSL" in error_type or "ssl" in error_msg.lower():
-                        friendly_msg = "SSL证书验证失败，可能网站的证书存在问题。"
-                    elif "DNS" in error_type or "dns" in error_msg.lower():
-                        friendly_msg = "DNS解析失败，无法解析主机名。"
-                    
-                    traceback.print_exc()
-                    return f"Fetch调用错误: {error_type}: {error_msg}\n\n{friendly_msg}\n\n正确用法: fetch https://example.com"
-
             # 初始千问 API 调用
-            response = await self.call_qwen_api(messages, available_tools)
+            try:
+                response = await self.call_qwen_api(messages, available_tools)
+            except Exception as e:
+                return f"千问API调用失败: {str(e)}\n\n请检查网络连接或API配置"
+            
             final_text = []
             
             # 最大链式调用次数，防止无限循环
