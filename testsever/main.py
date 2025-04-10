@@ -3,60 +3,18 @@ import httpx
 import re
 import os
 import json
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from mcp.server.fastmcp import FastMCP
+from config import Config  # 导入新的配置类
 
 # 初始化 FastMCP server
 mcp = FastMCP("combined-tools")
 
-# 配置类
-class Config:
-    def __init__(self, config_file: Optional[str] = None, **kwargs):
-        # 默认配置
-        self.api_key = 'sk-3962e8a22f764dfdb96b2a3e90601cf5'
-        self.api_base = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-        self.model = 'qwen-max-latest'
-        self.max_tokens = 2000
-        self.temperature = 0.7
-        self.handlers_config = {
-            "image": {
-                "enabled": True,
-                "functions": {
-                    "detect_sensor": True,
-                    "recognize_text": True
-                }
-            }
-        }
-        
-        # 从环境变量加载配置
-        if os.environ.get("ALIYUN_API_KEY"):
-            self.api_key = os.environ.get("ALIYUN_API_KEY")
-        if os.environ.get("ALIYUN_API_BASE"):
-            self.api_base = os.environ.get("ALIYUN_API_BASE")
-        if os.environ.get("ALIYUN_MODEL"):
-            self.model = os.environ.get("ALIYUN_MODEL")
-        
-        # 从配置文件加载
-        if config_file and os.path.exists(config_file):
-            self._load_from_file(config_file)
-            
-        # 从kwargs覆盖
-        for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-    
-    def _load_from_file(self, config_file):
-        """从配置文件加载配置"""
-        try:
-            with open(config_file, 'r', encoding='utf-8') as f:
-                file_config = json.load(f)
-                for key, value in file_config.items():
-                    if hasattr(self, key):
-                        setattr(self, key, value)
-        except Exception as e:
-            print(f"加载配置文件失败: {str(e)}")
-
-# 创建配置实例
-config = Config()
+# 获取当前脚本所在目录
+current_dir = os.path.dirname(os.path.abspath(__file__))
+config_path = os.path.join(os.path.dirname(current_dir), "config.json")
+config = Config(config_path if os.path.exists(config_path) else None)
 
 # 计算器工具
 @mcp.tool()

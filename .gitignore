@@ -35,3 +35,8 @@ ENV/
 .vscode/
 *.swp
 *.swo
+
+# 配置文件
+config.json
+secrets.json
+.env.local

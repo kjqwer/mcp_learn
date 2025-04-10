@@ -13,18 +13,19 @@ import sys
 
 # 导入模型配置
 from model_config import ModelConfig
+from config import Config  # 导入统一配置类
 
 # 从 .env 加载环境变量
 load_dotenv()
 
 class MCPClient:
-    def __init__(self):
+    def __init__(self, config_file: Optional[str] = "config.json"):
         # 初始化会话和客户端对象
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
         
         # 使用模型配置
-        self.model_config = ModelConfig()
+        self.model_config = ModelConfig(config_file)
         
     async def connect_to_server(self, server_script_path: str):
         """连接到 MCP 服务器
@@ -226,6 +227,10 @@ async def main():
     try:
         await client.connect_to_server(sys.argv[1])
         await client.chat_loop()
+    except Exception as e:
+        print(f"程序运行出错: {str(e)}")
+        import traceback
+        traceback.print_exc()
     finally:
         await client.cleanup()
 
